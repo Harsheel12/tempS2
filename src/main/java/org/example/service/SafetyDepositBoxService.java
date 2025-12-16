@@ -1,5 +1,8 @@
 package org.example.service;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import org.example.model.SafetyDepositBox;
 import org.example.model.SmallSafetyDepositBox;
 
@@ -8,6 +11,8 @@ import java.util.List;
 import java.util.Optional;
 
 public class SafetyDepositBoxService {
+
+    private static final Logger logger = LogManager.getLogger(SafetyDepositBoxService.class);
 
     private static SafetyDepositBoxService safetyDepositBoxService;
     private List<SafetyDepositBox> safetyDepositBoxes;
@@ -20,10 +25,12 @@ public class SafetyDepositBoxService {
 
     private SafetyDepositBoxService() {
         this.safetyDepositBoxes = new ArrayList<>();
+        logger.info("SafetyDepositBoxService instance created");
     }
 
     public static synchronized SafetyDepositBoxService getInstance() {
         if (safetyDepositBoxService == null) {
+            logger.info("Creating new SafetyDepositBoxService singleton instance");
             safetyDepositBoxService = new SafetyDepositBoxService();
         }
         return safetyDepositBoxService;
@@ -35,7 +42,17 @@ public class SafetyDepositBoxService {
      * @param number Maximum number of boxes
      */
     public static synchronized void setNumberOfSafetyDepositBoxes(int number) {
+        if (number <= 0) {
+            logger.error("Attempted to set invalid number of safety deposit boxes: {}", number);
+            throw new IllegalArgumentException("Number of safety deposit boxes must be greater than 0");
+        }
+
+        logger.info("Setting maximum number of safety deposit boxes to: {}", number);
         numberOfSafetyDepositBoxes = number;
+
+        if (safetyDepositBoxService != null) {
+            logger.warn("Resetting SafetyDepositBoxService singleton instance");
+        }
         // Reset the singleton instance for clean state in tests
         safetyDepositBoxService = null;
     }
@@ -45,6 +62,7 @@ public class SafetyDepositBoxService {
      * @return Maximum number of boxes
      */
     public static int getNumberOfSafetyDepositBox() {
+        logger.debug("Retrieved maximum number of safety deposit boxes: {}", numberOfSafetyDepositBoxes);
         return numberOfSafetyDepositBoxes;
     }
 
@@ -60,6 +78,9 @@ public class SafetyDepositBoxService {
      * @return An allocated SafetyDepositBox
      */
     public synchronized SafetyDepositBox allocateSafetyDepositBox() {
+        logger.info("Thread {} requesting safety deposit box allocation",
+                Thread.currentThread().getName());
+
         SafetyDepositBox box = null;
 
         // Try to get a released (available) box from the pool
@@ -69,28 +90,51 @@ public class SafetyDepositBoxService {
             // If box is available in pool then allocate it
             box = releasedBox.get();
             box.setAllotted(true);
+            logger.info("Thread {} allocated existing box ID {} from pool",
+                    Thread.currentThread().getName(), box.getId());
         } else if (safetyDepositBoxes.size() < numberOfSafetyDepositBoxes) {
-            // If noo box available but limit not reached then create new box
+            // If no box available but limit not reached then create new box
+            logger.debug("No box available, creating new box. Current count: {}, Max: {}",
+                    safetyDepositBoxes.size(), numberOfSafetyDepositBoxes);
             box = createNewBox();
             box.setAllotted(true);
             safetyDepositBoxes.add(box);
+            logger.info("Thread {} allocated newly created box ID {}",
+                    Thread.currentThread().getName(), box.getId());
         } else {
             // If no box is available and limit reached then wait for a box to be released
+            logger.warn("Thread {} waiting - No boxes available and maximum limit ({}) reached",
+                    Thread.currentThread().getName(), numberOfSafetyDepositBoxes);
             try {
                 while (getReleasedSafetyDepositBox().isEmpty()) {
+                    logger.debug("Thread {} entering wait state", Thread.currentThread().getName());
                     wait(); // Wait until notified by releaseSafetyDepositBox
+                    logger.debug("Thread {} woke up from wait state", Thread.currentThread().getName());
                 }
                 // After being notified, get the released box
                 releasedBox = getReleasedSafetyDepositBox();
                 if (releasedBox.isPresent()) {
                     box = releasedBox.get();
                     box.setAllotted(true);
+                    logger.info("Thread {} allocated box ID {} after waiting",
+                            Thread.currentThread().getName(), box.getId());
+                } else {
+                    logger.error("Thread {} woke up but no box available - this should not happen",
+                            Thread.currentThread().getName());
                 }
             } catch (InterruptedException e) {
+                logger.error("Thread {} interrupted while waiting for safety deposit box",
+                        Thread.currentThread().getName(), e);
                 Thread.currentThread().interrupt();
                 throw new RuntimeException("Thread interrupted while waiting for safety deposit box", e);
             }
         }
+
+        logger.info("Thread {} successfully allocated box ID {}. Available boxes: {}/{}",
+                Thread.currentThread().getName(),
+                box != null ? box.getId() : "null",
+                getNumberOfAvailableSafetyDepositBoxes(),
+                safetyDepositBoxes.size());
 
         return box;
     }
@@ -102,11 +146,24 @@ public class SafetyDepositBoxService {
      * @param box The box to release
      */
     public synchronized void releaseSafetyDepositBox(SafetyDepositBox box) {
-        if (box != null) {
-            box.setAllotted(false);
-            // Notify all waiting threads that a box has been released
-            notifyAll();
+        if (box == null) {
+            logger.warn("Attempted to release null safety deposit box");
+            return;
         }
+
+        logger.info("Thread {} releasing box ID {}",
+                Thread.currentThread().getName(), box.getId());
+
+        box.setAllotted(false);
+
+        // Notify all waiting threads that a box has been released
+        notifyAll();
+        logger.debug("Notified all waiting threads that box ID {} is now available", box.getId());
+
+        logger.info("Box ID {} released. Available boxes: {}/{}",
+                box.getId(),
+                getNumberOfAvailableSafetyDepositBoxes(),
+                safetyDepositBoxes.size());
     }
 
     /**
@@ -122,6 +179,7 @@ public class SafetyDepositBoxService {
                 count++;
             }
         }
+        logger.debug("Current available boxes count: {}", count);
         return count;
     }
 
@@ -134,9 +192,11 @@ public class SafetyDepositBoxService {
     public synchronized Optional<SafetyDepositBox> getReleasedSafetyDepositBox() {
         for (SafetyDepositBox box : safetyDepositBoxes) {
             if (!box.isAllotted()) {
+                logger.debug("Found available box ID {}", box.getId());
                 return Optional.of(box);
             }
         }
+        logger.debug("No available boxes found in pool");
         return Optional.empty();
     }
 
@@ -145,6 +205,8 @@ public class SafetyDepositBoxService {
      * @return List of safety deposit boxes
      */
     public synchronized List<SafetyDepositBox> getSafetyDepositBoxes() {
+        logger.debug("Retrieved list of all safety deposit boxes. Total count: {}",
+                safetyDepositBoxes.size());
         return new ArrayList<>(safetyDepositBoxes);
     }
 
@@ -155,6 +217,8 @@ public class SafetyDepositBoxService {
      * @return A new SmallSafetyDepositBox instance
      */
     private SafetyDepositBox createNewBox() {
-        return new SmallSafetyDepositBox(++boxIdCounter);
+        boxIdCounter++;
+        logger.debug("Creating new box with ID: {}", boxIdCounter);
+        return new SmallSafetyDepositBox(boxIdCounter);
     }
 }

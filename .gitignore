@@ -39,3 +39,4 @@ build/
 
 ### Logs ###
 /logs
+/logs/safety-deposit-box.log
