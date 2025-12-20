@@ -31,7 +31,7 @@
     <!-- Define loggers -->
     <Loggers>
         <!-- Root logger - catches all logs -->
-        <Root level="info">
+        <Root level="debug">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="FileAppender"/>
             <AppenderRef ref="RollingFileAppender"/>
@@ -44,7 +44,7 @@
         </Logger>
 
         <!-- Specific logger for SafetyDepositBox classes -->
-        <Logger name="SafetyDepositBox" level="info" additivity="false">
+        <Logger name="SafetyDepositBox" level="debug" additivity="false">
             <AppenderRef ref="ConsoleAppender"/>
             <AppenderRef ref="FileAppender"/>
         </Logger>

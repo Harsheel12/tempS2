@@ -20,6 +20,9 @@ public class SafetyDepositBoxService {
     // Maximum number of boxes that can be created
     private static int numberOfSafetyDepositBoxes;
 
+    // Wait flag used for testing purposes
+    private volatile boolean isWaiting = false;
+
     // Counter for generating unique box IDs
     private int boxIdCounter = 0;
 
@@ -106,11 +109,14 @@ public class SafetyDepositBoxService {
             logger.warn("Thread {} waiting - No boxes available and maximum limit ({}) reached",
                     Thread.currentThread().getName(), numberOfSafetyDepositBoxes);
             try {
+                isWaiting = true;
                 while (getReleasedSafetyDepositBox().isEmpty()) {
                     logger.debug("Thread {} entering wait state", Thread.currentThread().getName());
                     wait(); // Wait until notified by releaseSafetyDepositBox
                     logger.debug("Thread {} woke up from wait state", Thread.currentThread().getName());
                 }
+                isWaiting = false;
+
                 // After being notified, get the released box
                 releasedBox = getReleasedSafetyDepositBox();
                 if (releasedBox.isPresent()) {
@@ -123,6 +129,7 @@ public class SafetyDepositBoxService {
                             Thread.currentThread().getName());
                 }
             } catch (InterruptedException e) {
+                isWaiting = false;
                 logger.error("Thread {} interrupted while waiting for safety deposit box",
                         Thread.currentThread().getName(), e);
                 Thread.currentThread().interrupt();
@@ -220,5 +227,9 @@ public class SafetyDepositBoxService {
         boxIdCounter++;
         logger.debug("Creating new box with ID: {}", boxIdCounter);
         return new SmallSafetyDepositBox(boxIdCounter);
+    }
+
+    public synchronized boolean isWaiting() {
+        return isWaiting;
     }
 }

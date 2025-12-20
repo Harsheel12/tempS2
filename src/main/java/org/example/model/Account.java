@@ -1,6 +1,11 @@
 package org.example.model;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 public abstract class Account {
+
+    private static final Logger logger = LogManager.getLogger(SafetyDepositBox.class);
 
     private static long nextAccountId = 1_000;
 
@@ -10,11 +15,13 @@ public abstract class Account {
 
     public Account() {
         this.ACCOUNT_ID = nextAccountId;
+        logger.debug("Created Account with ID: {}", nextAccountId);
         nextAccountId += 5; // Increment by 5 for every new account
     }
 
     public double withdraw(double amount) {
         this.balance -= amount;
+        logger.info("Original balance is ${}, after withdrawing it became ${}", getBalance(), getBalance() - amount);
         return amount;
     }
 
